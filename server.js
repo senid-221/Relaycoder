@@ -35,7 +35,7 @@ http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/agent") {
       const body = await readBody(req);
       res.writeHead(200, { "content-type":"text/event-stream; charset=utf-8", "cache-control":"no-cache, no-transform", "connection":"keep-alive" });
-      const emit = event => res.write("data: " + JSON.stringify(event) + "\\n\\n");
+      const emit = event => res.write("data: " + JSON.stringify(event) + "\n\n");
       try { emit({type:"final",result:await runAgent(body,emit)}); }
       catch (e) { emit({type:"error",error:e.message || "Agent failed"}); }
       return res.end();
