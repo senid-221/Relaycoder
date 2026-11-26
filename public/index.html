@@ -361,13 +361,23 @@ function scrollDown(){ const t=$("thread"); t.scrollTop=t.scrollHeight; }
 function newChat(){ state.cur=null; state.files=[]; renderTags(); renderChat(); }
 
 /* unified API call (through the local server) */
-async function callModel(pid,model,messages){
-  const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system:state.system,key:state.keys[pid]||undefined})});
+async function callModel(pid,model,messages,system=state.system){
+  const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j.text||"";
 }
-async function callAgent(pid,model,messages){
-  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system:state.system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey})});
+async function callAgent(pid,model,messages,system=state.system){
+  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j;
+}
+function memoryFor(query,excludeId){
+  const terms=[...new Set(String(query||"").toLowerCase().match(/[a-z0-9_./-]{4,}/g)||[])].slice(0,18);
+  if(!terms.length) return "";
+  const ranked=state.convos.filter(cv=>cv.id!==excludeId&&Array.isArray(cv.msgs)&&cv.msgs.length)
+    .map(cv=>{const corpus=(String(cv.title||"")+" "+cv.msgs.map(m=>String(m.text||"")).join(" ")).toLowerCase();return {cv,score:terms.reduce((n,t)=>n+(corpus.includes(t)?1:0),0)};})
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score||b.cv.t-a.cv.t).slice(0,4);
+  if(!ranked.length) return "";
+  const rows=ranked.map(({cv})=>"Project/chat: "+String(cv.title||"Untitled")+"\n"+cv.msgs.filter(m=>m.r==="u"||m.r==="a").slice(-6).map(m=>(m.r==="u"?"User: ":"Relay: ")+String(m.text||"").slice(0,650)).join("\n"));
+  return "\n\nRelevant saved conversation memory from this browser (use only when relevant; newer user instructions override it):\n"+rows.join("\n---\n").slice(0,6500);
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -378,20 +388,20 @@ async function send(){
   for(const f of files){ if(f.size<200000){ try{ const t=await f.text(); if(t.indexOf("\u0000")<0) content+="\n\n[File: "+f.name+"]\n```\n"+t+"\n```"; }catch(e){} } }
   if(!state.cur){ state.cur={id:String(Date.now()),title:text.slice(0,48),t:Date.now(),pid,mid:m.id,msgs:[]}; state.convos.unshift(state.cur); }
   const c=state.cur; c.t=Date.now(); c.pid=pid; c.mid=m.id;
-  const names=files.map(f=>f.name); c.msgs.push({r:"u",text,files:names});
+  const names=files.map(f=>f.name); c.msgs.push({r:"u",text,files:names}); store("convos",state.convos);
   const api=c.msgs.slice(-20).map(x=>({role:x.r==="u"?"user":"assistant",content:x.text})).filter(x=>x.content);
   while(api.length&&api[0].role!=="user") api.shift(); api[api.length-1].content=content;
   $("empty")?.remove(); addUser(text,names); inp.value=""; renderTags(); sync();
   const {a,steps}=shell(m.label,p.color); scrollDown();
 
-  const githubMode=conns.includes("github");
+  const contextSystem=state.system+memoryFor(content,c.id);\n  const githubMode=conns.includes("github");
   let note=null, err=false, body="", actualActions=[];
   if(!state.local){ note="Server is not connected. Deploy the latest Relay version to enable live AI and GitHub actions."; }
   else if(!ready(pid)){ note="No "+p.name+" key yet. Add one on the Providers page."; }
   else if(githubMode){
     const li=h("li","run"),lb=h("span","lbl","Working in GitHub repository"); li.append(h("span","s"),lb); steps.append(li); scrollDown();
     try{
-      const out=await callAgent(pid,m.id,api);
+      const out=await callAgent(pid,m.id,api,contextSystem);
       li.className="done"; lb.textContent="GitHub task completed";
       body=out.text||""; actualActions=out.actions||[];
       if(out.commit) body+="\n\nCommit: "+out.commit.url;
@@ -403,7 +413,7 @@ async function send(){
     const li=h("li","run"),lb=h("span","lbl","Generating response");
     li.append(h("span","s"),lb); steps.append(li); scrollDown();
     try {
-      body=await callModel(pid,m.id,api);
+      body=await callModel(pid,m.id,api,contextSystem);
       li.className="done"; lb.textContent="Response ready";
     } catch(e) {
       li.className="done"; lb.textContent="Request failed";
