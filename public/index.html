@@ -132,6 +132,20 @@ textarea::placeholder{color:var(--muted)}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:12px;font-size:16px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:90vw}
 #toast.show{opacity:1}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Studio workspace */
+.studio-grid{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:12px;align-items:start}
+.studio-panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
+.studio-files{display:grid;gap:4px;max-height:420px;overflow:auto}
+.studio-file{padding:8px 10px;border-radius:8px;text-align:left;overflow-wrap:anywhere;color:var(--muted);font:14px "IBM Plex Mono",monospace}
+.studio-file:hover,.studio-file.active{background:var(--hover);color:var(--ink)}
+.studio-editor{width:100%;min-height:360px;resize:vertical;background:var(--code);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:14px/1.55 "IBM Plex Mono",monospace;tab-size:2}
+.studio-preview{width:100%;height:430px;background:#fff;border:1px solid var(--line);border-radius:10px}
+.studio-terminal{width:100%;min-height:150px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:#080b10;color:#d5e3d5;border-radius:10px;padding:12px;font:13px/1.5 "IBM Plex Mono",monospace}
+.studio-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.studio-input{min-width:0;flex:1}
+@media(max-width:700px){.studio-grid{grid-template-columns:1fr}.studio-files{max-height:180px;grid-template-columns:repeat(2,minmax(0,1fr))}.studio-editor{min-height:260px}.studio-preview{height:340px}}
+
 </style>
 </head>
 <body>
@@ -165,6 +179,7 @@ textarea::placeholder{color:var(--muted)}
       </div>
     </div></div>
   </section>
+  <section class="page" id="p-studio"><div class="wrap" id="studioBody"></div></section>
   <section class="page" id="p-projects"><div class="wrap" id="projectsBody"></div></section>
   <section class="page" id="p-models"><div class="wrap" id="modelsBody"></div></section>
   <section class="page" id="p-providers"><div class="wrap" id="provBody"></div></section>
@@ -177,6 +192,7 @@ textarea::placeholder{color:var(--muted)}
   <div class="dhead"><div class="brand" id="brand2"></div><button class="icon-btn" id="closeMenu" data-ic="x" aria-label="Close menu"></button></div>
   <button class="nav" data-go="chat" data-ic="chat">Chat</button>
   <button class="nav" data-go="projects" data-ic="models">Projects</button>
+  <button class="nav" data-go="studio" data-ic="providers">Studio</button>
   <button class="nav" data-go="models" data-ic="models">Models</button>
   <button class="nav" data-go="providers" data-ic="providers">Providers</button>
   <button class="nav" data-go="history" data-ic="history">History</button>
@@ -239,7 +255,7 @@ const CONNECTORS = [
   {id:"files",label:"Project files",note:"Read and edit workspace"},
   {id:"docs",label:"Docs search",note:"Look up library docs"}
 ];
-const PAGES = ["chat","projects","models","providers","history","prefs"];
+const PAGES = ["chat","projects","studio","models","providers","history","prefs"];
 const $ = id => document.getElementById(id);
 const load = (k,d) => { try{ const v=localStorage.getItem("relay-"+k); return v?JSON.parse(v):d; }catch(e){ return d; } };
 const store = (k,v) => { try{ localStorage.setItem("relay-"+k,JSON.stringify(v)); }catch(e){} };
@@ -275,7 +291,7 @@ function go(p, push=true){
   state.page=p; closeMenus(); closeDrawer();
   PAGES.forEach(n=>$("p-"+n).classList.toggle("on",n===p));
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.go===p));
-  ({projects:renderProjects,models:renderModels,providers:renderProviders,history:renderHistory,prefs:renderPrefs,chat:()=>{}})[p]();
+  ({projects:renderProjects,studio:renderStudio,models:renderModels,providers:renderProviders,history:renderHistory,prefs:renderPrefs,chat:()=>{}})[p]();
   const path=p==="chat"?"/":"/"+p;
   if(push && location.pathname!==path) history.pushState({}, "", path);
 }
@@ -529,6 +545,45 @@ function renderHistory(){
   });
   const clr=h("button","btn dng","Clear this project history"); clr.onclick=()=>{ state.convos=state.convos.filter(c=>(c.projectId||"default")!==state.activeProjectId); state.cur=null; store("convos",state.convos); renderChat(); renderHistory(); }; b.append(clr);
 }
+
+async function workspaceRequest(action, extra={}) {
+  const r=await fetch("/api/workspace",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,projectId:state.activeProjectId,...extra})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||("Workspace HTTP "+r.status));
+  return j;
+}
+async function renderStudio(){
+  const b=$("studioBody"); pageHead(b,"Studio","Local project files, a safe command runner, and an HTML live preview. Select a project to keep its workspace separate.");
+  const banner=h("div","banner warn","Studio execution is available when you run Relay locally with npm start. The hosted Vercel version does not execute shell commands or persist workspace files.");
+  b.append(banner);
+  const grid=h("div","studio-grid"),left=h("div","studio-panel"),right=h("div","studio-panel");
+  left.append(h("b","","Project files"));
+  const files=h("div","studio-files"); files.id="studioFiles"; files.style.marginTop="10px";
+  const refresh=h("button","btn","Refresh files"); refresh.onclick=()=>loadStudioFiles(); left.append(refresh,files);
+  const pathInput=h("input","field"); pathInput.placeholder="index.html"; pathInput.value="index.html"; pathInput.style.marginTop="12px";
+  const editor=h("textarea","studio-editor"); editor.spellcheck=false; editor.placeholder="Write or open a project file here...";
+  const actions=h("div","studio-actions"),save=h("button","btn pri","Save file"),preview=h("button","btn","Preview HTML"),starter=h("button","btn","Starter website");
+  actions.append(save,preview,starter);
+  const status=h("div","msgline","No file selected yet."); right.append(h("b","","Code editor"),pathInput,actions,editor,status);
+  const previewTitle=h("b","","Live preview"); previewTitle.style.display="block"; previewTitle.style.marginTop="18px";
+  const frame=h("iframe","studio-preview"); frame.title="Website live preview"; frame.setAttribute("sandbox","allow-scripts"); frame.srcdoc="<p style='font:16px sans-serif;padding:20px'>Save an HTML file, then choose Preview HTML.</p>";
+  right.append(previewTitle,frame);
+  const termTitle=h("b","","Terminal & tests"); termTitle.style.display="block"; termTitle.style.marginTop="18px";
+  const termRow=h("div","studio-actions"),cmd=h("input","field studio-input"); cmd.placeholder="npm test  |  npm run build  |  git status"; const run=h("button","btn pri","Run");
+  const output=h("pre","studio-terminal","Terminal output will appear here."); termRow.append(cmd,run); right.append(termTitle,termRow,output);
+  save.onclick=async()=>{try{await workspaceRequest("write",{path:pathInput.value,content:editor.value});status.textContent="Saved "+pathInput.value;await loadStudioFiles();}catch(e){status.textContent=e.message;status.className="msgline err";}};
+  preview.onclick=()=>{if(!/\.html?$/i.test(pathInput.value)){status.textContent="Live preview currently renders HTML files. Run your framework's dev server from a local terminal separately.";return;}frame.srcdoc=editor.value;status.textContent="Preview updated from the current editor contents.";};
+  starter.onclick=()=>{pathInput.value="index.html";editor.value='<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>My Website</title>\n<style>body{font:16px system-ui;margin:0;padding:48px;background:#f4f6fb;color:#182033}main{max-width:760px;margin:auto;background:white;padding:40px;border-radius:20px}a,button{color:#315bea}</style>\n</head>\n<body><main><h1>Welcome to my website</h1><p>Start building your project with Relay Coder.</p></main></body>\n</html>';status.textContent="Starter template loaded. Save it, then preview.";};
+  run.onclick=async()=>{const parts=cmd.value.trim().split(/\s+/);if(!parts[0])return;run.disabled=true;output.textContent="$ "+cmd.value+"\nRunning...";try{const r=await workspaceRequest("run",{command:parts[0],args:parts.slice(1)});output.textContent="$ "+cmd.value+"\n"+(r.stdout||"")+(r.stderr?"\n"+r.stderr:"")+"\nExit code: "+r.code;}catch(e){output.textContent=e.message;}finally{run.disabled=false;}};
+  grid.append(left,right); b.append(grid);
+  async function loadStudioFiles(){
+    files.replaceChildren();
+    try{const data=await workspaceRequest("list");if(!data.files.length)files.append(h("p","sub","No files yet. Use Starter website to begin."));data.files.forEach(file=>{const x=h("button","studio-file",file);x.onclick=async()=>{try{const d=await workspaceRequest("read",{path:file});pathInput.value=file;editor.value=d.content;status.textContent="Opened "+file;files.querySelectorAll(".studio-file").forEach(n=>n.classList.toggle("active",n===x));}catch(e){status.textContent=e.message;}};files.append(x);});}
+    catch(e){files.append(h("p","msgline err",e.message));}
+  }
+  await loadStudioFiles();
+}
+
 function applyTheme(){ document.documentElement.dataset.theme=state.theme==="light"?"light":"dark"; }
 function renderPrefs(){
   const b=$("prefsBody"); pageHead(b,"Preferences","Appearance and agent behaviour.");
