@@ -263,16 +263,21 @@ function paintModel(){ const {p,m}=cur(); $("modelLabel").textContent=m.label; $
 function paintConn(){ $("connDot").style.background=state.local?"var(--ok)":"var(--warn)"; $("connTxt").textContent=state.local?"Server connected":"Preview mode (demo)"; }
 fetch("/api/health").then(r=>r.json()).then(j=>{ if(j&&j.ok){ state.local=true; state.serverKeys=j.keys||{}; } }).catch(()=>{}).finally(()=>{ paintConn(); if(state.page==="providers") renderProviders(); });
 
-/* routing */
-function go(p){
+/* clean path routing */
+function routeFromPath(){
+  const part=location.pathname.replace(/\/+$/,"").split("/").pop();
+  return PAGES.includes(part)?part:"chat";
+}
+function go(p, push=true){
   if(!PAGES.includes(p)) p="chat";
   state.page=p; closeMenus(); closeDrawer();
   PAGES.forEach(n=>$("p-"+n).classList.toggle("on",n===p));
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.go===p));
   ({models:renderModels,providers:renderProviders,history:renderHistory,prefs:renderPrefs,chat:()=>{}})[p]();
-  try{ if(location.hash!=="#"+p) location.hash=p; }catch(e){}
+  const path=p==="chat"?"/":"/"+p;
+  if(push && location.pathname!==path) history.pushState({}, "", path);
 }
-window.addEventListener("hashchange",()=>go(location.hash.slice(1)));
+window.addEventListener("popstate",()=>go(routeFromPath(),false));
 function openDrawer(){ $("drawer").classList.add("open"); $("scrim").classList.add("open"); }
 function closeDrawer(){ $("drawer").classList.remove("open"); $("scrim").classList.remove("open"); }
 $("menuBtn").onclick=openDrawer; $("closeMenu").onclick=closeDrawer; $("scrim").onclick=closeDrawer;
@@ -492,7 +497,9 @@ function renderPrefs(){
 document.querySelectorAll("[data-ic]").forEach(el=>el.prepend(ic(el.dataset.ic,+(el.dataset.s||22))));
 $("brand").innerHTML=LOGO(34)+"Relay"; $("brand2").innerHTML=LOGO(34)+"Relay";
 applyTheme(); paintModel(); paintConn(); renderTags(); renderChat(); sync();
-go(location.hash.slice(1)||"chat");
+const initialPage=location.hash?location.hash.slice(1):routeFromPath();
+if(location.hash){ const cleanPath=initialPage==="chat"?"/":"/"+(PAGES.includes(initialPage)?initialPage:"chat"); history.replaceState({}, "", cleanPath); }
+go(PAGES.includes(initialPage)?initialPage:"chat",false);
 </script>
 </body>
 </html>
