@@ -19,6 +19,7 @@ module.exports = async (req, res) => {
     if (body.action === "list") result = { files: await cloud.listFiles(projectId, workspaceOwnerId, accessKey) };
     else if (body.action === "read") result = { content: await cloud.readFile(projectId, workspaceOwnerId, accessKey, body.path) };
     else if (body.action === "write") result = await cloud.writeFile(projectId, workspaceOwnerId, accessKey, body.path, body.content);
+    else if (body.action === "import") result = await cloud.importGitHubRepository(projectId, workspaceOwnerId, accessKey, body.repository, body.branch || "main");
     else if (body.action === "run") result = await cloud.terminal(projectId, workspaceOwnerId, accessKey, body.command, body.args || [], body.cwd);
     else if (body.action === "preview") result = await cloud.startPreview(projectId, workspaceOwnerId, accessKey, body.command, body.args || [], body.port, body.cwd);
     else if (body.action === "stop") result = await cloud.stop(projectId, workspaceOwnerId, accessKey);
