@@ -165,6 +165,7 @@ textarea::placeholder{color:var(--muted)}
       </div>
     </div></div>
   </section>
+  <section class="page" id="p-projects"><div class="wrap" id="projectsBody"></div></section>
   <section class="page" id="p-models"><div class="wrap" id="modelsBody"></div></section>
   <section class="page" id="p-providers"><div class="wrap" id="provBody"></div></section>
   <section class="page" id="p-history"><div class="wrap" id="histBody"></div></section>
@@ -175,6 +176,7 @@ textarea::placeholder{color:var(--muted)}
 <nav class="drawer" id="drawer" aria-label="Menu">
   <div class="dhead"><div class="brand" id="brand2"></div><button class="icon-btn" id="closeMenu" data-ic="x" aria-label="Close menu"></button></div>
   <button class="nav" data-go="chat" data-ic="chat">Chat</button>
+  <button class="nav" data-go="projects" data-ic="models">Projects</button>
   <button class="nav" data-go="models" data-ic="models">Models</button>
   <button class="nav" data-go="providers" data-ic="providers">Providers</button>
   <button class="nav" data-go="history" data-ic="history">History</button>
@@ -237,7 +239,7 @@ const CONNECTORS = [
   {id:"files",label:"Project files",note:"Read and edit workspace"},
   {id:"docs",label:"Docs search",note:"Look up library docs"}
 ];
-const PAGES = ["chat","models","providers","history","prefs"];
+const PAGES = ["chat","projects","models","providers","history","prefs"];
 const $ = id => document.getElementById(id);
 const load = (k,d) => { try{ const v=localStorage.getItem("relay-"+k); return v?JSON.parse(v):d; }catch(e){ return d; } };
 const store = (k,v) => { try{ localStorage.setItem("relay-"+k,JSON.stringify(v)); }catch(e){} };
@@ -246,7 +248,7 @@ function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("show
 
 const state = {
   pid:"anthropic", mid:"claude-sonnet-5-5", files:[], conns:new Set(["files"]), busy:false, page:"chat",
-  keys:load("keys",{}), agentAccessKey:load("agentAccessKey",""), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), theme:load("theme","dark"),
+  keys:load("keys",{}), agentAccessKey:load("agentAccessKey",""), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), projects:load("projects",[{id:"default",name:"My first project",description:"Default workspace",createdAt:Date.now()}]), activeProjectId:load("activeProjectId","default"), theme:load("theme","dark"),
   system:load("system","You are Relay, an expert coding agent. Be concise: give a short plan, then complete code in fenced blocks."),
   local:false, serverKeys:{}, status:{}, fetched:{}, cur:null
 };
@@ -273,7 +275,7 @@ function go(p, push=true){
   state.page=p; closeMenus(); closeDrawer();
   PAGES.forEach(n=>$("p-"+n).classList.toggle("on",n===p));
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.go===p));
-  ({models:renderModels,providers:renderProviders,history:renderHistory,prefs:renderPrefs,chat:()=>{}})[p]();
+  ({projects:renderProjects,models:renderModels,providers:renderProviders,history:renderHistory,prefs:renderPrefs,chat:()=>{}})[p]();
   const path=p==="chat"?"/":"/"+p;
   if(push && location.pathname!==path) history.pushState({}, "", path);
 }
@@ -387,10 +389,10 @@ async function callAgent(pid,model,messages,system=state.system,onStep=()=>{}){
   if(!final) throw new Error("GitHub agent stream ended without a final result.");
   return final;
 }
-function memoryFor(query,excludeId){
+function memoryFor(query,excludeId,projectId){
   const terms=[...new Set(String(query||"").toLowerCase().match(/[a-z0-9_./-]{4,}/g)||[])].slice(0,18);
   if(!terms.length) return "";
-  const ranked=state.convos.filter(cv=>cv.id!==excludeId&&Array.isArray(cv.msgs)&&cv.msgs.length)
+  const ranked=state.convos.filter(cv=>cv.id!==excludeId&&(cv.projectId||"default")===projectId&&Array.isArray(cv.msgs)&&cv.msgs.length)
     .map(cv=>{const corpus=(String(cv.title||"")+" "+cv.msgs.map(m=>String(m.text||"")).join(" ")).toLowerCase();return {cv,score:terms.reduce((n,t)=>n+(corpus.includes(t)?1:0),0)};})
     .filter(x=>x.score>0).sort((a,b)=>b.score-a.score||b.cv.t-a.cv.t).slice(0,4);
   if(!ranked.length) return "";
@@ -404,7 +406,7 @@ async function send(){
   state.busy=true; const {p,m}=cur(); const pid=state.pid; const files=state.files; state.files=[]; const conns=[...state.conns];
   let content=text;
   for(const f of files){ if(f.size<200000){ try{ const t=await f.text(); if(t.indexOf("\u0000")<0) content+="\n\n[File: "+f.name+"]\n```\n"+t+"\n```"; }catch(e){} } }
-  if(!state.cur){ state.cur={id:String(Date.now()),title:text.slice(0,48),t:Date.now(),pid,mid:m.id,msgs:[]}; state.convos.unshift(state.cur); }
+  if(!state.cur){ state.cur={id:String(Date.now()),title:text.slice(0,48),t:Date.now(),pid,mid:m.id,projectId:state.activeProjectId,msgs:[]}; state.convos.unshift(state.cur); }
   const c=state.cur; c.t=Date.now(); c.pid=pid; c.mid=m.id;
   const names=files.map(f=>f.name); c.msgs.push({r:"u",text,files:names}); store("convos",state.convos);
   const api=c.msgs.slice(-20).map(x=>({role:x.r==="u"?"user":"assistant",content:x.text})).filter(x=>x.content);
@@ -412,7 +414,7 @@ async function send(){
   $("empty")?.remove(); addUser(text,names); inp.value=""; renderTags(); sync();
   const {a,steps}=shell(m.label,p.color); scrollDown();
 
-  const contextSystem=state.system+memoryFor(content,c.id);
+  const contextSystem=state.system+memoryFor(content,c.id,c.projectId||state.activeProjectId);
   const githubMode=conns.includes("github");
   let note=null, err=false, body="", actualActions=[];
   if(!state.local){ note="Server is not connected. Deploy the latest Relay version to enable live AI and GitHub actions."; }
@@ -494,16 +496,38 @@ function renderModels(){
     ar.append(f,dl,add); c.append(ar); b.append(c);
   });
 }
+function renderProjects(){
+  const b=$("projectsBody"); pageHead(b,"Projects","Separate workspaces with their own conversation history and reusable project memory.");
+  const active=state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0];
+  const form=h("div","card"),head=h("div","chead","Create a project"); form.append(head);
+  const name=h("input","field"); name.placeholder="Project name (e.g. ROAD MASTER)"; name.maxLength=80;
+  const desc=h("input","field"); desc.placeholder="What are you building? (optional)"; desc.style.marginTop="8px"; desc.maxLength=240;
+  const create=h("button","btn pri","Create project"); create.style.marginTop="10px";
+  create.onclick=()=>{const n=name.value.trim();if(!n){toast("Enter a project name first.");return;}const p={id:"p_"+Date.now().toString(36),name:n,description:desc.value.trim(),createdAt:Date.now()};state.projects.push(p);state.activeProjectId=p.id;store("projects",state.projects);store("activeProjectId",p.id);renderProjects();toast("Project created.");};
+  form.append(name,desc,create); b.append(form);
+  b.append(h("div","chead","Your workspaces"));
+  state.projects.forEach(p=>{
+    const card=h("div","card"),row=h("div","mrow"),meta=h("div","grow"),nm=h("b","",p.name),ds=h("small","",p.description||"No description"),count=h("small","",(state.convos.filter(c=>(c.projectId||"default")===p.id).length)+" conversations");
+    meta.append(nm,ds,count); row.append(meta);
+    const select=h("button","btn"+(p.id===state.activeProjectId?" pri":""),p.id===state.activeProjectId?"Active":"Use project");
+    select.onclick=()=>{state.activeProjectId=p.id;store("activeProjectId",p.id);newChat();renderProjects();toast("Active project changed.");};
+    row.append(select);card.append(row);
+    if(p.id!=="default"){const del=h("button","btn dng","Delete project");del.onclick=()=>{if(state.convos.some(c=>(c.projectId||"default")===p.id)){toast("This project still has chats. Clear its history first.");return;}state.projects=state.projects.filter(x=>x.id!==p.id);if(state.activeProjectId===p.id)state.activeProjectId="default";store("projects",state.projects);store("activeProjectId",state.activeProjectId);renderProjects();};card.append(del);}
+    b.append(card);
+  });
+  if(active)b.append(h("p","sub","Active workspace: "+active.name+". New chats and recalled memory will belong to this project."));
+}
 function renderHistory(){
-  const b=$("histBody"); pageHead(b,"History","Your recent chats, saved in this browser.");
-  if(!state.convos.length){ b.append(h("div","card","No chats yet. Start one from the Chat page.")); return; }
-  state.convos.forEach(cv=>{
+  const b=$("histBody"); const active=state.projects.find(p=>p.id===state.activeProjectId); pageHead(b,"History","Conversation history for "+(active?active.name:"this workspace")+". Saved in this browser.");
+  const projectChats=state.convos.filter(cv=>(cv.projectId||"default")===state.activeProjectId);
+  if(!projectChats.length){ b.append(h("div","card","No chats in this project yet. Start one from the Chat page.")); return; }
+  projectChats.forEach(cv=>{
     const r=h("div","hrow"),o=h("button","open"),pn=PROVIDERS[cv.pid]; o.append(h("b","",cv.title||"Untitled"),h("small","",(pn?pn.name+" · ":"")+new Date(cv.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})));
     o.onclick=()=>{ state.cur=cv; if(PROVIDERS[cv.pid]&&modelsOf(cv.pid).some(m=>m.id===cv.mid)){ state.pid=cv.pid; state.mid=cv.mid; paintModel(); } renderChat(); go("chat"); };
     const x=h("button","icon-btn","×"); x.setAttribute("aria-label","Delete chat"); x.onclick=()=>{ state.convos=state.convos.filter(c=>c!==cv); if(state.cur===cv) state.cur=null; store("convos",state.convos); renderChat(); renderHistory(); };
     r.append(o,x); b.append(r);
   });
-  const clr=h("button","btn dng","Clear all history"); clr.onclick=()=>{ state.convos=[]; state.cur=null; store("convos",[]); renderChat(); renderHistory(); }; b.append(clr);
+  const clr=h("button","btn dng","Clear this project history"); clr.onclick=()=>{ state.convos=state.convos.filter(c=>(c.projectId||"default")!==state.activeProjectId); state.cur=null; store("convos",state.convos); renderChat(); renderHistory(); }; b.append(clr);
 }
 function applyTheme(){ document.documentElement.dataset.theme=state.theme==="light"?"light":"dark"; }
 function renderPrefs(){
@@ -515,6 +539,7 @@ function renderPrefs(){
   b.append(h("span","lab","GitHub agent access key"));
   const ak=h("input","field"); ak.type="password"; ak.autocomplete="off"; ak.placeholder="Enter the RELAY_AGENT_ACCESS_KEY from Vercel"; ak.value=state.agentAccessKey; ak.onchange=()=>{ state.agentAccessKey=ak.value.trim(); store("agentAccessKey",state.agentAccessKey); toast("GitHub agent access key saved in this browser."); }; b.append(ak);
   b.append(h("p","sub","This is the private access key you configure on the server. It is separate from your GitHub token."));
+  b.append(h("span","lab","Workspace memory")); b.append(h("p","sub","Chats are saved per project in this browser. Relay retrieves relevant earlier chats from the active project when answering. Cloud sync across devices is not configured yet."));
   b.append(h("span","lab","Data"));
   const rs=h("button","btn dng","Remove saved keys"); rs.onclick=()=>{ state.keys={}; store("keys",{}); state.status={}; toast("Keys removed."); }; b.append(rs);
 }
