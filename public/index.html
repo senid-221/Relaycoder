@@ -365,9 +365,27 @@ async function callModel(pid,model,messages,system=state.system){
   const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j.text||"";
 }
-async function callAgent(pid,model,messages,system=state.system){
+async function callAgent(pid,model,messages,system=state.system,onStep=()=>{}){
   const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey})});
-  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j;
+  if(!r.ok) { const j=await r.json().catch(()=>({})); throw new Error(j.error||("HTTP "+r.status)); }
+  if(!r.body) throw new Error("This browser cannot receive live agent progress.");
+  const reader=r.body.getReader(),decoder=new TextDecoder(); let buffer="",final=null,failed=null;
+  while(true){
+    const part=await reader.read(); if(part.done) break;
+    buffer+=decoder.decode(part.value,{stream:true});
+    const frames=buffer.split("\n\n"); buffer=frames.pop()||"";
+    for(const frame of frames){
+      const line=frame.split("\n").find(x=>x.startsWith("data: "));
+      if(!line) continue;
+      let event; try{event=JSON.parse(line.slice(6));}catch(e){continue;}
+      if(event.type==="step") onStep(event.text);
+      else if(event.type==="final") final=event.result;
+      else if(event.type==="error") failed=event.error;
+    }
+  }
+  if(failed) throw new Error(failed);
+  if(!final) throw new Error("GitHub agent stream ended without a final result.");
+  return final;
 }
 function memoryFor(query,excludeId){
   const terms=[...new Set(String(query||"").toLowerCase().match(/[a-z0-9_./-]{4,}/g)||[])].slice(0,18);
@@ -401,7 +419,7 @@ async function send(){
   else if(githubMode){
     const li=h("li","run"),lb=h("span","lbl","Working in GitHub repository"); li.append(h("span","s"),lb); steps.append(li); scrollDown();
     try{
-      const out=await callAgent(pid,m.id,api,contextSystem);
+      const out=await callAgent(pid,m.id,api,contextSystem,t=>{ const step=h("li","run"),label=h("span","lbl",t); step.append(h("span","s"),label); steps.append(step); scrollDown(); setTimeout(()=>{step.className="done";},0); });
       li.className="done"; lb.textContent="GitHub task completed";
       body=out.text||""; actualActions=out.actions||[];
       if(out.commit) body+="\n\nCommit: "+out.commit.url;
