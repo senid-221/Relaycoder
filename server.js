@@ -1,5 +1,6 @@
 // Local dev server: node server.js  (same API as the Vercel functions)
 process.env.ALLOW_SERVER_KEYS = process.env.ALLOW_SERVER_KEYS || "true";
+process.env.RELAY_ENABLE_LOCAL_AGENT_TOOLS = "true";
 const http = require("http"), fs = require("fs"), path = require("path");
 const { health, chat, models } = require("./lib/providers");
 const { runAgent } = require("./lib/agent");
@@ -31,7 +32,14 @@ http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/api/chat") { const [c, b] = await chat(await readBody(req)); return send(res, c, b); }
     if (req.method === "POST" && req.url === "/api/models") { const [c, b] = await models(await readBody(req)); return send(res, c, b); }
-    if (req.method === "POST" && req.url === "/api/agent") return send(res, 200, await runAgent(await readBody(req)));
+    if (req.method === "POST" && req.url === "/api/agent") {
+      const body = await readBody(req);
+      res.writeHead(200, { "content-type":"text/event-stream; charset=utf-8", "cache-control":"no-cache, no-transform", "connection":"keep-alive" });
+      const emit = event => res.write("data: " + JSON.stringify(event) + "\\n\\n");
+      try { emit({type:"final",result:await runAgent(body,emit)}); }
+      catch (e) { emit({type:"error",error:e.message || "Agent failed"}); }
+      return res.end();
+    }
     send(res, 404, { error: "Not found" });
   } catch (e) { send(res, 502, { error: e.message }); }
 }).listen(PORT, () => console.log("Relay running at http://localhost:" + PORT));
