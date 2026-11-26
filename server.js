@@ -42,4 +42,4 @@ http.createServer(async (req, res) => {
     }
     send(res, 404, { error: "Not found" });
   } catch (e) { send(res, 502, { error: e.message }); }
-}).listen(PORT, () => console.log("Relay running at http://localhost:" + PORT));
+}).listen(PORT, process.env.HOST || "127.0.0.1", () => console.log("Relay running at http://localhost:" + PORT));
