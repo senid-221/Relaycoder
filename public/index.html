@@ -383,8 +383,8 @@ async function callModel(pid,model,messages,system=state.system){
   const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j.text||"";
 }
-async function callAgent(pid,model,messages,system=state.system,onStep=()=>{}){
-  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey})});
+async function callAgent(pid,model,messages,system=state.system,onStep=()=>{},mode="github"){
+  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey,mode,workspaceProjectId:state.activeProjectId})});
   if(!r.ok) { const j=await r.json().catch(()=>({})); throw new Error(j.error||("HTTP "+r.status)); }
   if(!r.body) throw new Error("This browser cannot receive live agent progress.");
   const reader=r.body.getReader(),decoder=new TextDecoder(); let buffer="",final=null,failed=null;
@@ -565,6 +565,11 @@ async function renderStudio(){
   const actions=h("div","studio-actions"),save=h("button","btn pri","Save file"),preview=h("button","btn","Preview HTML"),starter=h("button","btn","Starter website");
   actions.append(save,preview,starter);
   const status=h("div","msgline","No file selected yet."); right.append(h("b","","Code editor"),pathInput,actions,editor,status);
+  const taskTitle=h("b","","Ask Relay to code this workspace"); taskTitle.style.display="block"; taskTitle.style.marginTop="18px";
+  const task=h("textarea","field"); task.rows=3; task.style.marginTop="8px"; task.placeholder="Describe the feature, bug fix, or app you want Relay to build in this workspace...";
+  const ask=h("button","btn pri","Build with Relay"); ask.style.marginTop="8px";
+  ask.onclick=async()=>{if(!task.value.trim())return;const {p,m}=cur();ask.disabled=true;output.textContent="Relay is starting the local coding task...";try{const result=await callAgent(state.pid,m.id,[{role:"user",content:task.value.trim()}],state.system,t=>{output.textContent+="\\n✓ "+t;}, "workspace");output.textContent+="\\n\\n"+(result.text||"Task completed.")+"\\n\\nActions:\\n"+(result.actions||[]).join("\\n");await loadStudioFiles();}catch(e){output.textContent+="\\n"+e.message;}finally{ask.disabled=false;}};
+  right.append(taskTitle,task,ask);
   const previewTitle=h("b","","Live preview"); previewTitle.style.display="block"; previewTitle.style.marginTop="18px";
   const frame=h("iframe","studio-preview"); frame.title="Website live preview"; frame.setAttribute("sandbox","allow-scripts"); frame.srcdoc="<p style='font:16px sans-serif;padding:20px'>Save an HTML file, then choose Preview HTML.</p>";
   right.append(previewTitle,frame);
