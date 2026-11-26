@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "description": "Relay: an AI coding agent UI for Nvidia, OpenAI, Alibaba Cloud and Anthropic models.",
   "private": true,
-  "scripts": { "start": "node server.js", "dev": "node server.js" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@vercel/sandbox": "4.1.0"
+  }
 }
