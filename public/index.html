@@ -347,7 +347,7 @@ $("voiceBtn").onclick=()=>{
 /* chat rendering */
 function emptyEl(){
   const d=h("div","empty"); d.id="empty";
-  d.innerHTML=LOGO(64)+"<h1>What are we building?</h1><p>Describe a task. Relay plans the change, writes the code and reports each step with the model you pick.</p>";
+  d.innerHTML=LOGO(64)+"<h1>What are we building?</h1><p>Ask a question or connect GitHub to let Relay inspect and change a repository. Progress is shown only for actions actually performed.</p>";
   const c=h("div","chips"); ["Fix the failing tests","Add input validation to the signup form","Refactor utils.js into modules"].forEach(t=>{ const b=h("button","chip",t); b.onclick=()=>{ inp.value=t; sync(); inp.focus(); }; c.append(b); });
   d.append(c); return d;
 }
@@ -398,23 +398,20 @@ async function send(){
     }catch(e){ li.className="done"; lb.textContent="GitHub task failed"; note=p.name+" / GitHub error: "+e.message; err=true; }
     actualActions.forEach(t=>{ const done=h("li","done"); done.append(h("span","s"),h("span","lbl",t)); steps.append(done); });
   } else {
-    const plan=[["Thinking","Thought"]];
-    if(names.length) plan.push(["Reading attachments","Read attachments"]);
-    if(conns.includes("files")) plan.push(["Scanning project","Scanned project"]);
-    if(conns.includes("docs")) plan.push(["Looking up docs","Looked up docs"]);
-    plan.push(["Planning","Planned"],["Building","Built"]);
-    if(conns.includes("terminal")) plan.push(["Testing","Tested"]);
-    const result=callModel(pid,m.id,api).then(v=>({ok:v}),e=>({err:e.message}));
-    for(let i=0;i<plan.length;i++){
-      const li=h("li","run"),lb=h("span","lbl",plan[i][0]); li.append(h("span","s"),lb); steps.append(li); scrollDown();
-      await Promise.all([sleep(850), i===plan.length-1?result:null]);
-      li.className="done"; lb.textContent=plan[i][1];
+    // Normal model chat is not a coding-agent run: never display fabricated
+    // scan/plan/build/test milestones for work that was not performed.
+    const li=h("li","run"),lb=h("span","lbl","Generating response");
+    li.append(h("span","s"),lb); steps.append(li); scrollDown();
+    try {
+      body=await callModel(pid,m.id,api);
+      li.className="done"; lb.textContent="Response ready";
+    } catch(e) {
+      li.className="done"; lb.textContent="Request failed";
+      note=p.name+" error: "+e.message; err=true;
     }
-    const out=await result;
-    if(out&&out.ok) body=out.ok; else if(out){ note=p.name+" error: "+out.err; err=true; }
   }
   const msg={r:"a",label:m.label,color:p.color,acts:actualActions,text:body,note,err};
-  c.msgs.push(msg); tail(a,msg); store("convos",state.convos.slice(0,40));
+  c.msgs.push(msg); tail(a,msg); store("convos",state.convos);
   state.busy=false; sync(); scrollDown();
 }
 
