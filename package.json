@@ -1,0 +1,8 @@
+{
+  "name": "relay-coder",
+  "version": "1.0.0",
+  "description": "Relay: an AI coding agent UI for Nvidia, OpenAI, Alibaba Cloud and Anthropic models.",
+  "private": true,
+  "scripts": { "start": "node server.js", "dev": "node server.js" },
+  "engines": { "node": ">=18" }
+}
