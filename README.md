@@ -25,7 +25,7 @@ anyone who can open the site would spend your keys.
 
 Enable the GitHub connector in Relay chat to let the selected model inspect repository files, stage edits, and commit/push changes. Configure these server-side environment variables in Vercel (Project Settings → Environment Variables), then redeploy:
 
-- `GITHUB_TOKEN`: a fine-grained GitHub token with **Contents: Read and write** access to the target repository.
+- `GITHUB_TOKEN`: a fine-grained GitHub token with **Contents: Read and write**, **Pull requests: Read and write**, and **Workflows: Read and write** permissions on the target repository.
 - `GITHUB_REPO`: target in `owner/repository` format, for example `senid-221/Relaycoder`.
 - `GITHUB_BRANCH`: base branch for Relay feature branches and Pull Requests (optional; defaults to `main`).
 - `RELAY_AGENT_ACCESS_KEY`: a separate long random password used to authorize Relay users to run GitHub changes. Enter the same value in Relay → Preferences. Do not reuse your GitHub token.
