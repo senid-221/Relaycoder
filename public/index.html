@@ -442,7 +442,7 @@ async function send(){
       const out=await callAgent(pid,m.id,api,contextSystem,t=>{ const step=h("li","run"),label=h("span","lbl",t); step.append(h("span","s"),label); steps.append(step); scrollDown(); setTimeout(()=>{step.className="done";},0); });
       li.className="done"; lb.textContent="GitHub task completed";
       body=out.text||""; actualActions=out.actions||[];
-      if(out.commit) body+="\n\nCommit: "+out.commit.url;
+      if(out.commit) body+="\n\nCommit: "+out.commit.url+(out.commit.branch?"\nBranch: "+out.commit.branch:"")+(out.commit.pull_request?"\nPull Request: "+out.commit.pull_request.url:"");
     }catch(e){ li.className="done"; lb.textContent="GitHub task failed"; note=p.name+" / GitHub error: "+e.message; err=true; }
     actualActions.forEach(t=>{ const done=h("li","done"); done.append(h("span","s"),h("span","lbl",t)); steps.append(done); });
   } else {

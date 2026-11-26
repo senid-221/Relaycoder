@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --check server.js && node --check api/agent.js && node --check api/chat.js && node --check api/health.js && node --check api/models.js && node --check api/workspace.js && node --check lib/agent.js && node --check lib/cloud-sandbox.js && node --check lib/providers.js && node --check lib/skills.js && node --check lib/workspace.js"
   },
   "engines": {
     "node": ">=22.19.0"
