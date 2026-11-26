@@ -246,7 +246,7 @@ function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("show
 
 const state = {
   pid:"anthropic", mid:"claude-sonnet-5-5", files:[], conns:new Set(["files"]), busy:false, page:"chat",
-  keys:load("keys",{}), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), theme:load("theme","dark"),
+  keys:load("keys",{}), agentAccessKey:load("agentAccessKey",""), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), theme:load("theme","dark"),
   system:load("system","You are Relay, an expert coding agent. Be concise: give a short plan, then complete code in fenced blocks."),
   local:false, serverKeys:{}, status:{}, fetched:{}, cur:null
 };
@@ -360,6 +360,10 @@ async function callModel(pid,model,messages){
   const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system:state.system,key:state.keys[pid]||undefined})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j.text||"";
 }
+async function callAgent(pid,model,messages){
+  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system:state.system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey})});
+  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j;
+}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function send(){
@@ -375,27 +379,36 @@ async function send(){
   $("empty")?.remove(); addUser(text,names); inp.value=""; renderTags(); sync();
   const {a,steps}=shell(m.label,p.color); scrollDown();
 
-  const plan=[["Thinking","Thought"]];
-  if(names.length) plan.push(["Reading attachments","Read attachments"]);
-  if(conns.includes("files")) plan.push(["Scanning project","Scanned project"]);
-  if(conns.includes("github")) plan.push(["Searching GitHub","Searched GitHub"]);
-  if(conns.includes("docs")) plan.push(["Looking up docs","Looked up docs"]);
-  plan.push(["Planning","Planned"],["Building","Built"]);
-  if(conns.includes("terminal")) plan.push(["Testing","Tested"]);
-
-  let result=null, note=null, err=false;
-  if(!state.local){ note="Preview mode: this hosted page can’t reach provider APIs. Deploy Relay with its server (see README) to get real answers."; }
+  const githubMode=conns.includes("github");
+  let note=null, err=false, body="", actualActions=[];
+  if(!state.local){ note="Server is not connected. Deploy the latest Relay version to enable live AI and GitHub actions."; }
   else if(!ready(pid)){ note="No "+p.name+" key yet. Add one on the Providers page."; }
-  else result=callModel(pid,m.id,api).then(v=>({ok:v}),e=>({err:e.message}));
-
-  for(let i=0;i<plan.length;i++){
-    const li=h("li","run"),lb=h("span","lbl",plan[i][0]); li.append(h("span","s"),lb); steps.append(li); scrollDown();
-    await Promise.all([sleep(850), i===plan.length-1&&result?result:null]);
-    li.className="done"; lb.textContent=plan[i][1];
+  else if(githubMode){
+    const li=h("li","run"),lb=h("span","lbl","Working in GitHub repository"); li.append(h("span","s"),lb); steps.append(li); scrollDown();
+    try{
+      const out=await callAgent(pid,m.id,api);
+      li.className="done"; lb.textContent="GitHub task completed";
+      body=out.text||""; actualActions=out.actions||[];
+      if(out.commit) body+="\n\nCommit: "+out.commit.url;
+    }catch(e){ li.className="done"; lb.textContent="GitHub task failed"; note=p.name+" / GitHub error: "+e.message; err=true; }
+    actualActions.forEach(t=>{ const done=h("li","done"); done.append(h("span","s"),h("span","lbl",t)); steps.append(done); });
+  } else {
+    const plan=[["Thinking","Thought"]];
+    if(names.length) plan.push(["Reading attachments","Read attachments"]);
+    if(conns.includes("files")) plan.push(["Scanning project","Scanned project"]);
+    if(conns.includes("docs")) plan.push(["Looking up docs","Looked up docs"]);
+    plan.push(["Planning","Planned"],["Building","Built"]);
+    if(conns.includes("terminal")) plan.push(["Testing","Tested"]);
+    const result=callModel(pid,m.id,api).then(v=>({ok:v}),e=>({err:e.message}));
+    for(let i=0;i<plan.length;i++){
+      const li=h("li","run"),lb=h("span","lbl",plan[i][0]); li.append(h("span","s"),lb); steps.append(li); scrollDown();
+      await Promise.all([sleep(850), i===plan.length-1?result:null]);
+      li.className="done"; lb.textContent=plan[i][1];
+    }
+    const out=await result;
+    if(out&&out.ok) body=out.ok; else if(out){ note=p.name+" error: "+out.err; err=true; }
   }
-  let out=result?await result:null, body="";
-  if(out&&out.ok) body=out.ok; else if(out){ note=p.name+" error: "+out.err; err=true; }
-  const msg={r:"a",label:m.label,color:p.color,acts:plan.map(s=>s[1]),text:body,note,err};
+  const msg={r:"a",label:m.label,color:p.color,acts:actualActions,text:body,note,err};
   c.msgs.push(msg); tail(a,msg); store("convos",state.convos.slice(0,40));
   state.busy=false; sync(); scrollDown();
 }
@@ -468,6 +481,9 @@ function renderPrefs(){
   const sg=h("div","seg"); [["dark","Dark"],["light","Light"]].forEach(t=>{ const x=h("button",state.theme===t[0]?"on":"",t[1]); x.onclick=()=>{ state.theme=t[0]; store("theme",t[0]); applyTheme(); renderPrefs(); }; sg.append(x); }); b.append(sg);
   b.append(h("span","lab","System prompt"));
   const ta=h("textarea","field"); ta.rows=5; ta.style.fontFamily="inherit"; ta.style.border="1px solid var(--line)"; ta.value=state.system; ta.oninput=()=>{ state.system=ta.value; store("system",ta.value); }; b.append(ta);
+  b.append(h("span","lab","GitHub agent access key"));
+  const ak=h("input","field"); ak.type="password"; ak.autocomplete="off"; ak.placeholder="Enter the RELAY_AGENT_ACCESS_KEY from Vercel"; ak.value=state.agentAccessKey; ak.onchange=()=>{ state.agentAccessKey=ak.value.trim(); store("agentAccessKey",state.agentAccessKey); toast("GitHub agent access key saved in this browser."); }; b.append(ak);
+  b.append(h("p","sub","This is the private access key you configure on the server. It is separate from your GitHub token."));
   b.append(h("span","lab","Data"));
   const rs=h("button","btn dng","Remove saved keys"); rs.onclick=()=>{ state.keys={}; store("keys",{}); state.status={}; toast("Keys removed."); }; b.append(rs);
 }

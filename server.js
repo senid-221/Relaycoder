@@ -2,6 +2,7 @@
 process.env.ALLOW_SERVER_KEYS = process.env.ALLOW_SERVER_KEYS || "true";
 const http = require("http"), fs = require("fs"), path = require("path");
 const { health, chat, models } = require("./lib/providers");
+const { runAgent } = require("./lib/agent");
 const PORT = process.env.PORT || 8787;
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
 const readBody = req => new Promise((ok, no) => {
@@ -17,6 +18,7 @@ http.createServer(async (req, res) => {
     if (req.url === "/api/health") return send(res, 200, health());
     if (req.method === "POST" && req.url === "/api/chat") { const [c, b] = await chat(await readBody(req)); return send(res, c, b); }
     if (req.method === "POST" && req.url === "/api/models") { const [c, b] = await models(await readBody(req)); return send(res, c, b); }
+    if (req.method === "POST" && req.url === "/api/agent") return send(res, 200, await runAgent(await readBody(req)));
     send(res, 404, { error: "Not found" });
   } catch (e) { send(res, 502, { error: e.message }); }
 }).listen(PORT, () => console.log("Relay running at http://localhost:" + PORT));
