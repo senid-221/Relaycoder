@@ -264,10 +264,11 @@ function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("show
 
 const state = {
   pid:"anthropic", mid:"claude-sonnet-5-5", files:[], conns:new Set(["files"]), busy:false, page:"chat",
-  keys:load("keys",{}), agentAccessKey:load("agentAccessKey",""), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), projects:load("projects",[{id:"default",name:"My first project",description:"Default workspace",createdAt:Date.now()}]), activeProjectId:load("activeProjectId","default"), theme:load("theme","dark"),
+  keys:load("keys",{}), agentAccessKey:load("agentAccessKey",""), workspaceOwnerId:load("workspaceOwnerId",""), off:load("off",{}), custom:load("custom",{}), convos:load("convos",[]), projects:load("projects",[{id:"default",name:"My first project",description:"Default workspace",createdAt:Date.now()}]), activeProjectId:load("activeProjectId","default"), theme:load("theme","dark"),
   system:load("system","You are Relay, an expert coding agent. Be concise: give a short plan, then complete code in fenced blocks."),
   local:false, serverKeys:{}, status:{}, fetched:{}, cur:null
 };
+if(!state.workspaceOwnerId){state.workspaceOwnerId=crypto.randomUUID?crypto.randomUUID():("ws_"+Math.random().toString(36).slice(2)+Date.now().toString(36));store("workspaceOwnerId",state.workspaceOwnerId);}
 const sel = load("sel",null); if(sel){ state.pid=sel.pid; state.mid=sel.mid; }
 
 /* models + providers */
@@ -384,7 +385,7 @@ async function callModel(pid,model,messages,system=state.system){
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j.text||"";
 }
 async function callAgent(pid,model,messages,system=state.system,onStep=()=>{},mode="github"){
-  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey,mode,workspaceProjectId:state.activeProjectId})});
+  const r=await fetch("/api/agent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:pid,model,messages,system,key:state.keys[pid]||undefined,accessKey:state.agentAccessKey,mode,workspaceProjectId:state.activeProjectId,workspaceOwnerId:state.workspaceOwnerId})});
   if(!r.ok) { const j=await r.json().catch(()=>({})); throw new Error(j.error||("HTTP "+r.status)); }
   if(!r.body) throw new Error("This browser cannot receive live agent progress.");
   const reader=r.body.getReader(),decoder=new TextDecoder(); let buffer="",final=null,failed=null;
@@ -547,14 +548,14 @@ function renderHistory(){
 }
 
 async function workspaceRequest(action, extra={}) {
-  const r=await fetch("/api/workspace",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,projectId:state.activeProjectId,...extra})});
+  const r=await fetch("/api/workspace",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,projectId:state.activeProjectId,workspaceOwnerId:state.workspaceOwnerId,accessKey:state.agentAccessKey,...extra})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(j.error||("Workspace HTTP "+r.status));
   return j;
 }
 async function renderStudio(){
-  const b=$("studioBody"); pageHead(b,"Studio","Local project files, a safe command runner, and an HTML live preview. Select a project to keep its workspace separate.");
-  const banner=h("div","banner warn","Studio execution is available when you run Relay locally with npm start. The hosted Vercel version does not execute shell commands or persist workspace files.");
+  const b=$("studioBody"); pageHead(b,"Studio","Persistent cloud workspace, Linux terminal, AI coding agent, and live app preview — isolated per project.");
+  const banner=h("div","banner ok",state.local?"Using your local project workspace and terminal.":"Using an isolated Vercel Sandbox. Project files persist between sessions; terminal commands run inside a separate Linux microVM.");
   b.append(banner);
   const grid=h("div","studio-grid"),left=h("div","studio-panel"),right=h("div","studio-panel");
   left.append(h("b","","Project files"));
@@ -568,13 +569,13 @@ async function renderStudio(){
   const taskTitle=h("b","","Ask Relay to code this workspace"); taskTitle.style.display="block"; taskTitle.style.marginTop="18px";
   const task=h("textarea","field"); task.rows=3; task.style.marginTop="8px"; task.placeholder="Describe the feature, bug fix, or app you want Relay to build in this workspace...";
   const ask=h("button","btn pri","Build with Relay"); ask.style.marginTop="8px";
-  ask.onclick=async()=>{if(!task.value.trim())return;const {p,m}=cur();ask.disabled=true;output.textContent="Relay is starting the local coding task...";try{const result=await callAgent(state.pid,m.id,[{role:"user",content:task.value.trim()}],state.system,t=>{output.textContent+="\\n✓ "+t;}, "workspace");output.textContent+="\\n\\n"+(result.text||"Task completed.")+"\\n\\nActions:\\n"+(result.actions||[]).join("\\n");await loadStudioFiles();}catch(e){output.textContent+="\\n"+e.message;}finally{ask.disabled=false;}};
+  ask.onclick=async()=>{if(!task.value.trim())return;const {p,m}=cur();ask.disabled=true;output.textContent="Relay is opening the project sandbox...";try{const result=await callAgent(state.pid,m.id,[{role:"user",content:task.value.trim()}],state.system,t=>{output.textContent+="\\n✓ "+t;}, "workspace");output.textContent+="\\n\\n"+(result.text||"Task completed.")+"\\n\\nActions:\\n"+(result.actions||[]).join("\\n");await loadStudioFiles();}catch(e){output.textContent+="\\n"+e.message;}finally{ask.disabled=false;}};
   right.append(taskTitle,task,ask);
   const previewTitle=h("b","","Live preview"); previewTitle.style.display="block"; previewTitle.style.marginTop="18px";
   const frame=h("iframe","studio-preview"); frame.title="Website live preview"; frame.setAttribute("sandbox","allow-scripts"); frame.srcdoc="<p style='font:16px sans-serif;padding:20px'>Save an HTML file, then choose Preview HTML.</p>";
   right.append(previewTitle,frame);
-  const termTitle=h("b","","Terminal & tests"); termTitle.style.display="block"; termTitle.style.marginTop="18px";
-  const termRow=h("div","studio-actions"),cmd=h("input","field studio-input"); cmd.placeholder="npm test  |  npm run build  |  git status"; const run=h("button","btn pri","Run");
+  const previewRow=h("div","studio-actions"),previewCmd=h("input","field studio-input"),previewPort=h("input","field"); previewCmd.value="npm run dev -- --host 0.0.0.0"; previewCmd.placeholder="Preview command (e.g. npm run dev -- --host 0.0.0.0)"; previewPort.value="5173"; previewPort.style.width="88px"; const startPreview=h("button","btn pri","Start app preview"); previewRow.append(previewCmd,previewPort,startPreview); right.append(previewRow);\n  startPreview.onclick=async()=>{const parts=previewCmd.value.trim().split(/\\s+/);if(!parts[0])return;startPreview.disabled=true;status.textContent="Starting preview server in cloud sandbox...";try{const r=await workspaceRequest("preview",{command:parts[0],args:parts.slice(1),port:Number(previewPort.value)});frame.src=r.previewUrl;status.textContent="Preview is available at "+r.previewUrl;}catch(e){status.textContent=e.message;status.className="msgline err";}finally{startPreview.disabled=false;}};\n  const termTitle=h("b","","Terminal & tests"); termTitle.style.display="block"; termTitle.style.marginTop="18px";
+  const termRow=h("div","studio-actions"),cmd=h("input","field studio-input"); cmd.placeholder="npm test | npm run build | git status | python3 main.py"; const run=h("button","btn pri","Run");
   const output=h("pre","studio-terminal","Terminal output will appear here."); termRow.append(cmd,run); right.append(termTitle,termRow,output);
   save.onclick=async()=>{try{await workspaceRequest("write",{path:pathInput.value,content:editor.value});status.textContent="Saved "+pathInput.value;await loadStudioFiles();}catch(e){status.textContent=e.message;status.className="msgline err";}};
   preview.onclick=()=>{if(!/\.html?$/i.test(pathInput.value)){status.textContent="Live preview currently renders HTML files. Run your framework's dev server from a local terminal separately.";return;}frame.srcdoc=editor.value;status.textContent="Preview updated from the current editor contents.";};
@@ -583,7 +584,7 @@ async function renderStudio(){
   grid.append(left,right); b.append(grid);
   async function loadStudioFiles(){
     files.replaceChildren();
-    try{const data=await workspaceRequest("list");if(!data.files.length)files.append(h("p","sub","No files yet. Use Starter website to begin."));data.files.forEach(file=>{const x=h("button","studio-file",file);x.onclick=async()=>{try{const d=await workspaceRequest("read",{path:file});pathInput.value=file;editor.value=d.content;status.textContent="Opened "+file;files.querySelectorAll(".studio-file").forEach(n=>n.classList.toggle("active",n===x));}catch(e){status.textContent=e.message;}};files.append(x);});}
+    try{const data=await workspaceRequest("list");if(!data.files.length)files.append(h("p","sub","No files yet. Use Starter website to begin, or ask Relay to scaffold an app."));data.files.forEach(file=>{const x=h("button","studio-file",file);x.onclick=async()=>{try{const d=await workspaceRequest("read",{path:file});pathInput.value=file;editor.value=d.content;status.textContent="Opened "+file;files.querySelectorAll(".studio-file").forEach(n=>n.classList.toggle("active",n===x));}catch(e){status.textContent=e.message;}};files.append(x);});}
     catch(e){files.append(h("p","msgline err",e.message));}
   }
   await loadStudioFiles();
