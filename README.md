@@ -27,10 +27,10 @@ Enable the GitHub connector in Relay chat to let the selected model inspect repo
 
 - `GITHUB_TOKEN`: a fine-grained GitHub token with **Contents: Read and write** access to the target repository.
 - `GITHUB_REPO`: target in `owner/repository` format, for example `senid-221/Relaycoder`.
-- `GITHUB_BRANCH`: branch to update (optional; defaults to `main`).
+- `GITHUB_BRANCH`: base branch for Relay feature branches and Pull Requests (optional; defaults to `main`).
 - `RELAY_AGENT_ACCESS_KEY`: a separate long random password used to authorize Relay users to run GitHub changes. Enter the same value in Relay → Preferences. Do not reuse your GitHub token.
 
-Keep `GITHUB_TOKEN` and `RELAY_AGENT_ACCESS_KEY` private and never put them in source code. The agent reads the target branch, stages changes, then creates one Git commit and pushes it using a fast-forward-only update. It has no shell/terminal, so it cannot run project tests on GitHub.
+Keep `GITHUB_TOKEN` and `RELAY_AGENT_ACCESS_KEY` private and never put them in source code. The agent reads the base branch, stages changes, creates a dedicated `relay/...` feature branch, commits and pushes changes, then opens a draft Pull Request. It never pushes task changes directly to the base branch. GitHub Actions runs `npm test` for each Pull Request. Direct GitHub mode has no shell/terminal, so Relay cannot run tests before pushing; it reports remote CI as pending.
 
 ## Structure
 ```
