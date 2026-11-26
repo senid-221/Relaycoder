@@ -7,6 +7,7 @@ Relay Coder supports a persistent, isolated cloud development workspace through 
 1. Connect this repository to a Vercel project and deploy it with the Node.js runtime set to **Node.js 24.x** (the Sandbox SDK requires Node.js 22.19 or newer).
 2. In Vercel → Project → Settings → Environment Variables, set:
    - `RELAY_AGENT_ACCESS_KEY`: a long, private random value. Use the same value in Relay → Preferences → Coding agent access key.
+   - For private GitHub repository imports, set `GITHUB_TOKEN` as a Vercel Environment Variable with read access to the target repository. Do not place this token in browser storage.
    - Keep your AI provider API key in Relay → Providers or in server-side environment variables. The provider key is used by the Relay API and is never copied into the sandbox.
 3. Ensure Vercel Sandbox / OIDC is enabled for the Vercel project. In production, the Sandbox SDK uses the Vercel OIDC identity automatically; no Vercel access token should be placed in browser storage.
 4. Redeploy after changing environment variables.
@@ -17,6 +18,8 @@ Relay Coder supports a persistent, isolated cloud development workspace through 
 - A persistent Vercel Sandbox is assigned to each browser workspace + Relay project.
 - Firecracker microVM isolation for project code and shell commands.
 - Workspace files are snapshotted and restored when the sandbox resumes. Snapshot retention is configured for seven days, keeping the last two snapshots.
+- Import a GitHub repository by entering `owner/repository` and its branch in Studio. Public repositories can be imported directly; private repositories require a server-side `GITHUB_TOKEN` with read access to the repository. The token is used only by the Vercel API to download the archive and is never sent to the sandbox or browser.
+- Repository import is limited to 20 MB and requires an empty project workspace. Create a new Relay project to import another repository.
 - File listing, reading, and writing from Studio.
 - Real Linux terminal commands, including npm, pnpm, bun, node, Python, git and framework build/test commands. Commands run directly (no implicit shell); use `bash -lc` only when a shell script is deliberately required.
 - The AI agent can inspect and edit workspace files and run actual tests/build commands through the sandbox.
