@@ -14,7 +14,7 @@ Requires Node.js 18 or newer.
    - Windows PowerShell: `$env:RELAY_AGENT_ACCESS_KEY="use-a-long-random-secret"`
 3. Start Relay:
    `npm start`
-4. Open `http://localhost:8787`.
+4. Open `http://localhost:8787`. The server binds to `127.0.0.1` by default so the local terminal API is not exposed to other devices on your network. Only change `HOST` deliberately if you understand the network exposure.
 5. In Preferences, enter the same agent access key. In Providers, save an API key for the model provider you want to use.
 
 ## Studio capabilities
