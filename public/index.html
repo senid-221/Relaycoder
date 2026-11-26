@@ -412,7 +412,8 @@ async function send(){
   $("empty")?.remove(); addUser(text,names); inp.value=""; renderTags(); sync();
   const {a,steps}=shell(m.label,p.color); scrollDown();
 
-  const contextSystem=state.system+memoryFor(content,c.id);\n  const githubMode=conns.includes("github");
+  const contextSystem=state.system+memoryFor(content,c.id);
+  const githubMode=conns.includes("github");
   let note=null, err=false, body="", actualActions=[];
   if(!state.local){ note="Server is not connected. Deploy the latest Relay version to enable live AI and GitHub actions."; }
   else if(!ready(pid)){ note="No "+p.name+" key yet. Add one on the Providers page."; }
