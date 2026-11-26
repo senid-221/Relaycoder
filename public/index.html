@@ -597,7 +597,7 @@ function renderPrefs(){
   b.append(h("span","lab","System prompt"));
   const ta=h("textarea","field"); ta.rows=5; ta.style.fontFamily="inherit"; ta.style.border="1px solid var(--line)"; ta.value=state.system; ta.oninput=()=>{ state.system=ta.value; store("system",ta.value); }; b.append(ta);
   b.append(h("span","lab","Coding agent access key"));
-  const ak=h("input","field"); ak.type="password"; ak.autocomplete="off"; ak.placeholder="Enter the RELAY_AGENT_ACCESS_KEY from Vercel"; ak.value=state.agentAccessKey; ak.onchange=()=>{ state.agentAccessKey=ak.value.trim(); store("agentAccessKey",state.agentAccessKey); toast("GitHub agent access key saved in this browser."); }; b.append(ak);
+  const ak=h("input","field"); ak.type="password"; ak.autocomplete="off"; ak.placeholder="Enter RELAY_AGENT_ACCESS_KEY from local server or Vercel"; ak.value=state.agentAccessKey; ak.onchange=()=>{ state.agentAccessKey=ak.value.trim(); store("agentAccessKey",state.agentAccessKey); toast("Coding agent access key saved in this browser."); }; b.append(ak);
   b.append(h("p","sub","This private key enables agent tool access. On local Studio, set RELAY_AGENT_ACCESS_KEY before running npm start. It is separate from your provider API key and GitHub token."));
   b.append(h("span","lab","Workspace memory")); b.append(h("p","sub","Chats are saved per project in this browser. Relay retrieves relevant earlier chats from the active project when answering. Cloud sync across devices is not configured yet."));
   b.append(h("span","lab","Data"));
