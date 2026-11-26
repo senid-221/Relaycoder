@@ -558,6 +558,13 @@ async function renderStudio(){
   const banner=h("div","banner ok",state.local?"Using your local project workspace and terminal.":"Using an isolated Vercel Sandbox. Project files persist between sessions; terminal commands run inside a separate Linux microVM.");
   b.append(banner);
   const grid=h("div","studio-grid"),left=h("div","studio-panel"),right=h("div","studio-panel");
+  const importTitle=h("b","","Import from GitHub");
+  const importRepo=h("input","field"); importRepo.placeholder="owner/repository (e.g. vercel/next.js)";
+  const importBranch=h("input","field"); importBranch.placeholder="Branch"; importBranch.value="main";
+  const importButton=h("button","btn pri","Import repository to this workspace");
+  const importStatus=h("div","msgline","Imports into an empty workspace. Private repositories require GITHUB_TOKEN in Vercel Environment Variables.");
+  importButton.onclick=async()=>{const repository=importRepo.value.trim(),branch=importBranch.value.trim()||"main";if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)){importStatus.textContent="Enter a repository as owner/repository.";importStatus.className="msgline err";return;}if(!confirm("Import "+repository+" ("+branch+") into this project's cloud workspace? Existing project files will not be overwritten."))return;importButton.disabled=true;importStatus.textContent="Downloading repository archive from GitHub...";importStatus.className="msgline";try{const result=await workspaceRequest("import",{repository,branch});importStatus.textContent="Imported "+result.importedFiles+" files from "+result.repository+" ("+result.branch+").";importStatus.className="msgline ok";await loadStudioFiles();}catch(e){importStatus.textContent=e.message;importStatus.className="msgline err";}finally{importButton.disabled=false;}};
+  left.append(importTitle,importRepo,importBranch,importButton,importStatus);
   left.append(h("b","","Project files"));
   const files=h("div","studio-files"); files.id="studioFiles"; files.style.marginTop="10px";
   const refresh=h("button","btn","Refresh files"); refresh.onclick=()=>loadStudioFiles(); left.append(refresh,files);
